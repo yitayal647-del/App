@@ -1,0 +1,562 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: Profiles
+    description: Creator profiles and follow relationships.
+  - name: Feed
+    description: Published videos and feed interactions.
+  - name: Search
+    description: Search creators and published video captions.
+  - name: Uploads
+    description: Secure direct-to-object-storage video uploads.
+  - name: Notifications
+    description: Account notifications.
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /profiles/me:
+    get:
+      operationId: getMyProfile
+      tags: [Profiles]
+      summary: Get or create the signed-in user's profile
+      responses:
+        "200":
+          description: Current user's profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          description: Sign-in is required.
+    patch:
+      operationId: updateMyProfile
+      tags: [Profiles]
+      summary: Update the signed-in user's profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileBody"
+      responses:
+        "200":
+          description: Updated profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "400":
+          description: Invalid profile fields.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Sign-in is required.
+  /profiles/{username}:
+    get:
+      operationId: getProfile
+      tags: [Profiles]
+      summary: Get a creator profile by username
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Creator profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "404":
+          description: Profile not found.
+  /profiles/{username}/videos:
+    get:
+      operationId: getProfileVideos
+      tags: [Profiles]
+      summary: Get a creator's public videos
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 12
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A page of published videos.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedResponse"
+        "404":
+          description: Profile not found.
+  /profiles/{profileId}/follow:
+    post:
+      operationId: followProfile
+      tags: [Profiles]
+      summary: Toggle following a creator
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Current follow state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FollowResponse"
+        "401":
+          description: Sign-in is required.
+        "404":
+          description: Profile not found.
+  /feed:
+    get:
+      operationId: getFeed
+      tags: [Feed]
+      summary: Get a page of public videos
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 12
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A page of published videos.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedResponse"
+  /videos/publish:
+    post:
+      operationId: publishVideo
+      tags: [Uploads]
+      summary: Publish an uploaded video
+      description: Publishes only after the object has been uploaded and verified in storage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishVideoBody"
+      responses:
+        "201":
+          description: Video published.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoItem"
+        "400":
+          description: Invalid video or upload metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Sign-in is required.
+  /videos/{videoId}/like:
+    post:
+      operationId: likeVideo
+      tags: [Feed]
+      summary: Toggle a like on a video
+      parameters:
+        - name: videoId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Current like state and count.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LikeResponse"
+        "401":
+          description: Sign-in is required.
+        "404":
+          description: Video not found.
+  /videos/{videoId}/comments:
+    get:
+      operationId: getComments
+      tags: [Feed]
+      summary: Get comments for a video
+      parameters:
+        - name: videoId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 30
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A page of comments.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommentsResponse"
+    post:
+      operationId: createComment
+      tags: [Feed]
+      summary: Add a comment to a video
+      parameters:
+        - name: videoId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCommentBody"
+      responses:
+        "201":
+          description: Comment created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommentItem"
+        "401":
+          description: Sign-in is required.
+        "404":
+          description: Video not found.
+  /search:
+    get:
+      operationId: search
+      tags: [Search]
+      summary: Search public creator profiles and video captions
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 80
+      responses:
+        "200":
+          description: Matching public profiles and videos.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponse"
+  /storage/uploads/request-url:
+    post:
+      operationId: requestUploadUrl
+      tags: [Uploads]
+      summary: Request a short-lived direct video upload URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadUrlRequest"
+      responses:
+        "200":
+          description: Direct upload URL.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadUrlResponse"
+        "400":
+          description: Invalid video file details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Sign-in is required.
+  /notifications:
+    get:
+      operationId: getNotifications
+      tags: [Notifications]
+      summary: Get recent notifications for the signed-in user
+      responses:
+        "200":
+          description: Recent account notifications.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationList"
+        "401":
+          description: Sign-in is required.
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+    ProfileSummary:
+      type: object
+      required: [id, username, displayName]
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        displayName:
+          type: string
+        avatarUrl:
+          type: [string, "null"]
+          format: uri
+    UserProfile:
+      allOf:
+        - $ref: "#/components/schemas/ProfileSummary"
+        - type: object
+          required: [bio, followersCount, followingCount, videosCount, likesReceived, isFollowing]
+          properties:
+            bio:
+              type: string
+            followersCount:
+              type: integer
+            followingCount:
+              type: integer
+            videosCount:
+              type: integer
+            likesReceived:
+              type: integer
+            isFollowing:
+              type: boolean
+    UpdateProfileBody:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 24
+          pattern: "^[a-zA-Z0-9_]+$"
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 48
+        bio:
+          type: string
+          maxLength: 160
+        avatarUrl:
+          type: [string, "null"]
+          format: uri
+    VideoItem:
+      type: object
+      required: [id, creator, caption, playbackUrl, durationSec, likesCount, commentsCount, isLikedByMe, createdAt]
+      properties:
+        id:
+          type: string
+        creator:
+          $ref: "#/components/schemas/ProfileSummary"
+        caption:
+          type: string
+        playbackUrl:
+          type: string
+          format: uri
+        durationSec:
+          type: number
+        likesCount:
+          type: integer
+        commentsCount:
+          type: integer
+        isLikedByMe:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    FeedResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/VideoItem"
+        nextCursor:
+          type: [string, "null"]
+    UploadUrlRequest:
+      type: object
+      required: [name, size, contentType]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        size:
+          type: integer
+          minimum: 1
+        contentType:
+          type: string
+          minLength: 1
+    UploadUrlResponse:
+      type: object
+      required: [uploadURL, objectPath]
+      properties:
+        uploadURL:
+          type: string
+          format: uri
+        objectPath:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/UploadUrlRequest"
+    PublishVideoBody:
+      type: object
+      required: [objectPath, caption, durationSec, sizeBytes, contentType]
+      properties:
+        objectPath:
+          type: string
+          minLength: 1
+        caption:
+          type: string
+          maxLength: 2200
+        durationSec:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 180
+        sizeBytes:
+          type: integer
+          minimum: 1
+        contentType:
+          type: string
+          minLength: 1
+    LikeResponse:
+      type: object
+      required: [isLiked, likesCount]
+      properties:
+        isLiked:
+          type: boolean
+        likesCount:
+          type: integer
+    CommentItem:
+      type: object
+      required: [id, author, body, createdAt]
+      properties:
+        id:
+          type: string
+        author:
+          $ref: "#/components/schemas/ProfileSummary"
+        body:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    CommentsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommentItem"
+        nextCursor:
+          type: [string, "null"]
+    CreateCommentBody:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 1000
+    FollowResponse:
+      type: object
+      required: [isFollowing, followersCount]
+      properties:
+        isFollowing:
+          type: boolean
+        followersCount:
+          type: integer
+    SearchResponse:
+      type: object
+      required: [users, videos]
+      properties:
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserProfile"
+        videos:
+          type: array
+          items:
+            $ref: "#/components/schemas/VideoItem"
+    NotificationList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [id, type, actor, createdAt]
+            properties:
+              id:
+                type: string
+              type:
+                type: string
+                enum: [follow, like, comment]
+              actor:
+                $ref: "#/components/schemas/ProfileSummary"
+              videoId:
+                type: [string, "null"]
+              createdAt:
+                type: string
+                format: date-time
+
