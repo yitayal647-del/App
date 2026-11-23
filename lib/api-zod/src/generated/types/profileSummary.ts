@@ -12,4 +12,5 @@ export interface ProfileSummary {
   displayName: string;
   /** @nullable */
   avatarUrl?: string | null;
+  isFollowing?: boolean;
 }

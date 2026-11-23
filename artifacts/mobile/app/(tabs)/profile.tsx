@@ -4,7 +4,7 @@ import {
   useGetProfileVideos,
 } from "@workspace/api-client-react";
 import { useRouter } from "expo-router";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
 import { ScreenHeader } from "@/components/ScreenHeader";
@@ -79,16 +79,32 @@ export default function ProfileScreen() {
 
         <View style={[styles.stats, { borderColor: colors.border, backgroundColor: colors.card }]}>
           <Stat label="Videos" value={profile.data.videosCount} colors={colors} />
-          <Stat label="Followers" value={profile.data.followersCount} colors={colors} />
-          <Stat label="Following" value={profile.data.followingCount} colors={colors} />
+          <Stat
+            label="Followers"
+            value={profile.data.followersCount}
+            colors={colors}
+            onPress={() => router.push(`/people/${profile.data.username}/followers` as never)}
+          />
+          <Stat
+            label="Following"
+            value={profile.data.followingCount}
+            colors={colors}
+            onPress={() => router.push(`/people/${profile.data.username}/following` as never)}
+          />
           <Stat label="Likes" value={profile.data.likesReceived} colors={colors} />
         </View>
 
         <View style={styles.sectionHead}>
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Your videos</Text>
-          <Text style={[styles.sectionMeta, { color: colors.mutedForeground }]}>
-            {profile.data.videosCount}
-          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open saved videos"
+            onPress={() => router.push("/favorites" as never)}
+            style={[styles.favoritesButton, { borderColor: colors.border }]}
+          >
+            <Feather name="bookmark" size={14} color={colors.primary} />
+            <Text style={[styles.favoritesText, { color: colors.foreground }]}>Saved</Text>
+          </Pressable>
         </View>
         {videos.isLoading ? (
           <StateMessage title="Loading videos" detail="Fetching your published videos." loading />
@@ -122,16 +138,23 @@ function Stat({
   label,
   value,
   colors,
+  onPress,
 }: {
   label: string;
   value: number;
   colors: ReturnType<typeof useColors>;
+  onPress?: () => void;
 }) {
   return (
-    <View style={styles.stat}>
+    <Pressable
+      accessibilityRole={onPress ? "button" : undefined}
+      disabled={!onPress}
+      onPress={onPress}
+      style={styles.stat}
+    >
       <Text style={[styles.statValue, { color: colors.foreground }]}>{value}</Text>
       <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{label}</Text>
-    </View>
+    </Pressable>
   );
 }
 
@@ -153,6 +176,8 @@ const styles = StyleSheet.create({
   sectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 13 },
   sectionTitle: { fontFamily: "Inter_600SemiBold", fontSize: 17 },
   sectionMeta: { fontFamily: "Inter_500Medium", fontSize: 12 },
+  favoritesButton: { minHeight: 34, borderWidth: 1, borderRadius: 11, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", gap: 6 },
+  favoritesText: { fontFamily: "Inter_500Medium", fontSize: 10 },
   videoGrid: { flexDirection: "row", flexWrap: "wrap", gap: 11 },
   emptyVideos: { alignItems: "center", borderWidth: 1, borderStyle: "dashed", borderRadius: 18, padding: 24, gap: 7 },
   emptyTitle: { fontFamily: "Inter_600SemiBold", fontSize: 14, marginTop: 5 },

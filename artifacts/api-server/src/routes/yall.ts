@@ -5,6 +5,7 @@ import {
   desc,
   eq,
   gt,
+  inArray,
   ilike,
   lt,
   or,
@@ -20,11 +21,13 @@ import {
 import { db } from "@workspace/db";
 import {
   comments,
+  favorites,
   follows,
   likes,
   notifications,
   uploads,
   users,
+  videoShares,
   videos,
 } from "@workspace/db/schema";
 import { Router, type IRouter, type Request, type RequestHandler, type Response } from "express";
@@ -117,7 +120,7 @@ function encodeCursor(createdAt: Date, id: string): string {
   return Buffer.from(`${createdAt.toISOString()}|${id}`).toString("base64url");
 }
 
-async function ensureProfile(userId: string) {
+export async function ensureProfile(userId: string) {
   const [existing] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   if (existing) return existing;
 
@@ -193,11 +196,28 @@ async function serializeProfile(profile: typeof users.$inferSelect, viewerId: st
   };
 }
 
-async function videoPage(options: {
+export async function canViewVideo(
+  video: { creatorId: string; visibility: string },
+  viewerId: string | null,
+) {
+  if (video.visibility === "public" || video.creatorId === viewerId) return true;
+  if (!viewerId || video.visibility !== "followers") return false;
+  const [relationship] = await db
+    .select({ followerId: follows.followerId })
+    .from(follows)
+    .where(and(eq(follows.followerId, viewerId), eq(follows.followingId, video.creatorId)))
+    .limit(1);
+  return Boolean(relationship);
+}
+
+export async function videoPage(options: {
   viewerId: string | null;
   limit: number;
   cursor: string | undefined;
   creatorId?: string;
+  videoId?: string;
+  mode?: "for-you" | "following";
+  favoritesForUser?: string;
   captionSearch?: string;
 }) {
   const cursor = decodeCursor(options.cursor);
@@ -207,9 +227,55 @@ async function videoPage(options: {
 
   const predicates = [];
   if (options.creatorId) predicates.push(eq(videos.creatorId, options.creatorId));
+  if (options.videoId) predicates.push(eq(videos.id, options.videoId));
   if (options.captionSearch) {
     predicates.push(ilike(videos.caption, `%${options.captionSearch}%`));
   }
+  if (options.favoritesForUser) {
+    predicates.push(
+      sql`exists(select 1 from ${favorites} where ${favorites.videoId} = ${videos.id} and ${favorites.userId} = ${options.favoritesForUser})`,
+    );
+  }
+  if (options.mode === "following") {
+    if (!options.viewerId) return { items: [], nextCursor: null };
+    const following = await db
+      .select({ id: follows.followingId })
+      .from(follows)
+      .where(eq(follows.followerId, options.viewerId));
+    const followingIds = following.map((item) => item.id);
+    if (!followingIds.length) return { items: [], nextCursor: null };
+    predicates.push(inArray(videos.creatorId, followingIds));
+    predicates.push(inArray(videos.visibility, ["public", "followers"]));
+  } else if (options.creatorId || options.favoritesForUser || options.videoId) {
+    const followRows = options.viewerId
+      ? await db
+          .select({ id: follows.followingId })
+          .from(follows)
+          .where(eq(follows.followerId, options.viewerId))
+      : [];
+    const followedIds = followRows.map((item) => item.id);
+    const canSeeFollowingOnly = options.viewerId
+      ? [...new Set([options.viewerId, ...followedIds])]
+      : [];
+    const visibilityConditions = [eq(videos.visibility, "public")];
+    if (options.viewerId) {
+      visibilityConditions.push(
+        and(eq(videos.visibility, "private"), eq(videos.creatorId, options.viewerId))!,
+      );
+    }
+    if (canSeeFollowingOnly.length) {
+      visibilityConditions.push(
+        and(
+          eq(videos.visibility, "followers"),
+          inArray(videos.creatorId, canSeeFollowingOnly),
+        )!,
+      );
+    }
+    predicates.push(or(...visibilityConditions)!);
+  } else {
+    predicates.push(eq(videos.visibility, "public"));
+  }
+  if (options.captionSearch) predicates.push(eq(videos.visibility, "public"));
   if (cursor) {
     predicates.push(
       or(
@@ -225,15 +291,25 @@ async function videoPage(options: {
       creatorId: videos.creatorId,
       objectPath: videos.objectPath,
       caption: videos.caption,
+      audioTitle: videos.audioTitle,
       durationSec: videos.durationSec,
+      visibility: videos.visibility,
       createdAt: videos.createdAt,
       username: users.username,
       displayName: users.displayName,
       avatarUrl: users.avatarUrl,
       likesCount: sql<number>`cast((select count(*) from ${likes} where ${likes.videoId} = ${videos.id}) as integer)`,
       commentsCount: sql<number>`cast((select count(*) from ${comments} where ${comments.videoId} = ${videos.id}) as integer)`,
+      favoritesCount: sql<number>`cast((select count(*) from ${favorites} where ${favorites.videoId} = ${videos.id}) as integer)`,
+      sharesCount: sql<number>`cast((select count(*) from ${videoShares} where ${videoShares.videoId} = ${videos.id}) as integer)`,
       isLikedByMe: options.viewerId
         ? sql<boolean>`exists(select 1 from ${likes} where ${likes.videoId} = ${videos.id} and ${likes.userId} = ${options.viewerId})`
+        : sql<boolean>`false`,
+      isFavoritedByMe: options.viewerId
+        ? sql<boolean>`exists(select 1 from ${favorites} where ${favorites.videoId} = ${videos.id} and ${favorites.userId} = ${options.viewerId})`
+        : sql<boolean>`false`,
+      isFollowing: options.viewerId
+        ? sql<boolean>`exists(select 1 from ${follows} where ${follows.followerId} = ${options.viewerId} and ${follows.followingId} = ${videos.creatorId})`
         : sql<boolean>`false`,
     })
     .from(videos)
@@ -252,13 +328,19 @@ async function videoPage(options: {
         username: video.username,
         displayName: video.displayName,
         avatarUrl: video.avatarUrl,
+        isFollowing: Boolean(video.isFollowing),
       },
       caption: video.caption,
-      playbackUrl: await storage.getObjectEntityReadURL(video.objectPath),
+      audioTitle: video.audioTitle,
+      playbackUrl: await storage.getObjectEntityReadURL(video.objectPath, 300),
       durationSec: Number(video.durationSec),
+      visibility: video.visibility,
       likesCount: Number(video.likesCount),
       commentsCount: Number(video.commentsCount),
+      favoritesCount: Number(video.favoritesCount),
+      sharesCount: Number(video.sharesCount),
       isLikedByMe: Boolean(video.isLikedByMe),
+      isFavoritedByMe: Boolean(video.isFavoritedByMe),
       createdAt: video.createdAt.toISOString(),
     })),
   );
@@ -363,10 +445,59 @@ router.get(
 router.get(
   "/feed",
   handle(async (req, res) => {
+    const mode = queryString(req, "mode") ?? "for-you";
+    if (mode !== "for-you" && mode !== "following") {
+      res.status(400).json({ error: "Choose a valid feed." });
+      return;
+    }
+    const viewerId = signedInUserId(req);
+    if (mode === "following" && !viewerId) {
+      res.status(401).json({ error: "Sign in to see your following feed." });
+      return;
+    }
     res.setHeader("Cache-Control", "private, no-store");
     res.json(
       await videoPage({
-        viewerId: signedInUserId(req),
+        viewerId,
+        limit: pageSize(req, 12, 20),
+        cursor: queryString(req, "cursor"),
+        mode,
+      }),
+    );
+  }),
+);
+
+router.get(
+  "/videos/:videoId",
+  handle(async (req, res) => {
+    const page = await videoPage({
+      viewerId: signedInUserId(req),
+      videoId: pathParam(req, "videoId"),
+      limit: 1,
+      cursor: undefined,
+      creatorId: undefined,
+      favoritesForUser: undefined,
+    });
+    const item = page.items[0];
+    if (!item) {
+      res.status(404).json({ error: "Video not found or not visible to you." });
+      return;
+    }
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json(item);
+  }),
+);
+
+router.get(
+  "/favorites",
+  handle(async (req, res) => {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json(
+      await videoPage({
+        viewerId: userId,
+        favoritesForUser: userId,
         limit: pageSize(req, 12, 20),
         cursor: queryString(req, "cursor"),
       }),
@@ -484,9 +615,11 @@ router.post(
         creatorId: userId,
         objectPath: upload.objectPath,
         caption: input.caption.trim(),
+        audioTitle: input.audioTitle?.trim() ?? "",
         durationSec: input.durationSec,
         sizeBytes: actualSize,
         contentType: actualType,
+        visibility: input.visibility,
       });
       await tx
         .update(uploads)
@@ -503,11 +636,16 @@ router.post(
         avatarUrl: user.avatarUrl,
       },
       caption: input.caption.trim(),
+      audioTitle: input.audioTitle?.trim() ?? "",
       playbackUrl,
       durationSec: input.durationSec,
+      visibility: input.visibility,
       likesCount: 0,
       commentsCount: 0,
+      favoritesCount: 0,
+      sharesCount: 0,
       isLikedByMe: false,
+      isFavoritedByMe: false,
       createdAt: createdAt.toISOString(),
     });
   }),
@@ -525,12 +663,13 @@ router.post(
 
     await db.transaction(async (tx) => {
       const [video] = await tx
-        .select({ id: videos.id, creatorId: videos.creatorId })
+        .select({ id: videos.id, creatorId: videos.creatorId, visibility: videos.visibility })
         .from(videos)
         .where(eq(videos.id, videoId))
         .for("update")
         .limit(1);
       if (!video) return;
+      if (!(await canViewVideo(video, userId))) return;
       creatorId = video.creatorId;
       const [existing] = await tx
         .select({ userId: likes.userId })
@@ -571,6 +710,15 @@ router.get(
   "/videos/:videoId/comments",
   handle(async (req, res) => {
     const videoId = pathParam(req, "videoId");
+    const [video] = await db
+      .select({ id: videos.id, creatorId: videos.creatorId, visibility: videos.visibility })
+      .from(videos)
+      .where(eq(videos.id, videoId))
+      .limit(1);
+    if (!video || !(await canViewVideo(video, signedInUserId(req)))) {
+      res.status(404).json({ error: "Video not found or not visible to you." });
+      return;
+    }
     const limit = pageSize(req, 30, 50);
     const cursorValue = queryString(req, "cursor");
     const cursor = decodeCursor(cursorValue);
@@ -640,12 +788,17 @@ router.post(
     await ensureProfile(userId);
     const videoId = pathParam(req, "videoId");
     const [video] = await db
-      .select({ id: videos.id, creatorId: videos.creatorId, allowComments: videos.allowComments })
+      .select({
+        id: videos.id,
+        creatorId: videos.creatorId,
+        visibility: videos.visibility,
+        allowComments: videos.allowComments,
+      })
       .from(videos)
       .where(eq(videos.id, videoId))
       .limit(1);
-    if (!video) {
-      res.status(404).json({ error: "Video not found." });
+    if (!video || !(await canViewVideo(video, userId))) {
+      res.status(404).json({ error: "Video not found or not visible to you." });
       return;
     }
     if (!video.allowComments) {

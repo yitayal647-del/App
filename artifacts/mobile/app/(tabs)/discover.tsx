@@ -105,7 +105,7 @@ export default function DiscoverScreen() {
               <Pressable
                 key={video.id}
                 accessibilityRole="link"
-                onPress={() => router.push(`/creator/${video.creator.username}` as never)}
+                onPress={() => router.push(`/video/${video.id}` as never)}
                 style={[styles.videoRow, { borderColor: colors.border, backgroundColor: colors.card }]}
               >
                 <View style={[styles.videoIcon, { backgroundColor: colors.accent }]}>

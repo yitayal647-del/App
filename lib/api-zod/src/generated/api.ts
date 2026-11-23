@@ -24,7 +24,8 @@ export const GetMyProfileResponse = zod.object({
   "id": zod.string(),
   "username": zod.string(),
   "displayName": zod.string(),
-  "avatarUrl": zod.string().url().nullish()
+  "avatarUrl": zod.string().url().nullish(),
+  "isFollowing": zod.boolean()
 }).and(zod.object({
   "bio": zod.string(),
   "followersCount": zod.number().int(),
@@ -60,7 +61,8 @@ export const UpdateMyProfileResponse = zod.object({
   "id": zod.string(),
   "username": zod.string(),
   "displayName": zod.string(),
-  "avatarUrl": zod.string().url().nullish()
+  "avatarUrl": zod.string().url().nullish(),
+  "isFollowing": zod.boolean()
 }).and(zod.object({
   "bio": zod.string(),
   "followersCount": zod.number().int(),
@@ -82,7 +84,8 @@ export const GetProfileResponse = zod.object({
   "id": zod.string(),
   "username": zod.string(),
   "displayName": zod.string(),
-  "avatarUrl": zod.string().url().nullish()
+  "avatarUrl": zod.string().url().nullish(),
+  "isFollowing": zod.boolean()
 }).and(zod.object({
   "bio": zod.string(),
   "followersCount": zod.number().int(),
@@ -117,14 +120,20 @@ export const GetProfileVideosResponse = zod.object({
   "id": zod.string(),
   "username": zod.string(),
   "displayName": zod.string(),
-  "avatarUrl": zod.string().url().nullish()
+  "avatarUrl": zod.string().url().nullish(),
+  "isFollowing": zod.boolean().optional()
 }),
   "caption": zod.string(),
+  "audioTitle": zod.string(),
   "playbackUrl": zod.string().url(),
   "durationSec": zod.number(),
+  "visibility": zod.enum(['public', 'followers', 'private']),
   "likesCount": zod.number().int(),
   "commentsCount": zod.number().int(),
+  "favoritesCount": zod.number().int(),
+  "sharesCount": zod.number().int(),
   "isLikedByMe": zod.boolean(),
+  "isFavoritedByMe": zod.boolean(),
   "createdAt": zod.coerce.date()
 })),
   "nextCursor": zod.string().nullish()
@@ -145,14 +154,80 @@ export const FollowProfileResponse = zod.object({
 
 
 /**
+ * @summary Get a page of a creator's followers
+ */
+export const GetFollowersParams = zod.object({
+  "profileId": zod.coerce.string()
+})
+
+export const getFollowersQueryQMax = 80;
+
+export const getFollowersQueryLimitDefault = 25;
+export const getFollowersQueryLimitMax = 50;
+
+
+
+export const GetFollowersQueryParams = zod.object({
+  "q": zod.coerce.string().max(getFollowersQueryQMax).optional(),
+  "limit": zod.coerce.number().int().min(1).max(getFollowersQueryLimitMax).default(getFollowersQueryLimitDefault),
+  "cursor": zod.coerce.string().optional()
+})
+
+export const GetFollowersResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "username": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().url().nullish(),
+  "isFollowing": zod.boolean().optional()
+})),
+  "nextCursor": zod.string().nullish()
+})
+
+
+/**
+ * @summary Get a page of a creator's following list
+ */
+export const GetFollowingParams = zod.object({
+  "profileId": zod.coerce.string()
+})
+
+export const getFollowingQueryQMax = 80;
+
+export const getFollowingQueryLimitDefault = 25;
+export const getFollowingQueryLimitMax = 50;
+
+
+
+export const GetFollowingQueryParams = zod.object({
+  "q": zod.coerce.string().max(getFollowingQueryQMax).optional(),
+  "limit": zod.coerce.number().int().min(1).max(getFollowingQueryLimitMax).default(getFollowingQueryLimitDefault),
+  "cursor": zod.coerce.string().optional()
+})
+
+export const GetFollowingResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "username": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().url().nullish(),
+  "isFollowing": zod.boolean().optional()
+})),
+  "nextCursor": zod.string().nullish()
+})
+
+
+/**
  * @summary Get a page of public videos
  */
+export const getFeedQueryModeDefault = `for-you`;
 export const getFeedQueryLimitDefault = 12;
 export const getFeedQueryLimitMax = 20;
 
 
 
 export const GetFeedQueryParams = zod.object({
+  "mode": zod.enum(['for-you', 'following']).default(getFeedQueryModeDefault),
   "limit": zod.coerce.number().int().min(1).max(getFeedQueryLimitMax).default(getFeedQueryLimitDefault),
   "cursor": zod.coerce.string().optional()
 })
@@ -164,14 +239,20 @@ export const GetFeedResponse = zod.object({
   "id": zod.string(),
   "username": zod.string(),
   "displayName": zod.string(),
-  "avatarUrl": zod.string().url().nullish()
+  "avatarUrl": zod.string().url().nullish(),
+  "isFollowing": zod.boolean().optional()
 }),
   "caption": zod.string(),
+  "audioTitle": zod.string(),
   "playbackUrl": zod.string().url(),
   "durationSec": zod.number(),
+  "visibility": zod.enum(['public', 'followers', 'private']),
   "likesCount": zod.number().int(),
   "commentsCount": zod.number().int(),
+  "favoritesCount": zod.number().int(),
+  "sharesCount": zod.number().int(),
   "isLikedByMe": zod.boolean(),
+  "isFavoritedByMe": zod.boolean(),
   "createdAt": zod.coerce.date()
 })),
   "nextCursor": zod.string().nullish()
@@ -190,6 +271,8 @@ export const publishVideoBodyDurationSecMax = 180;
 
 
 
+export const publishVideoBodyAudioTitleMax = 100;
+
 
 
 export const PublishVideoBody = zod.object({
@@ -197,7 +280,9 @@ export const PublishVideoBody = zod.object({
   "caption": zod.string().max(publishVideoBodyCaptionMax),
   "durationSec": zod.number().gt(publishVideoBodyDurationSecExclusiveMin).max(publishVideoBodyDurationSecMax),
   "sizeBytes": zod.number().int().min(1),
-  "contentType": zod.string().min(1)
+  "contentType": zod.string().min(1),
+  "visibility": zod.enum(['public', 'followers', 'private']),
+  "audioTitle": zod.string().max(publishVideoBodyAudioTitleMax).optional()
 })
 
 export const PublishVideoResponse = zod.object({
@@ -206,16 +291,133 @@ export const PublishVideoResponse = zod.object({
   "id": zod.string(),
   "username": zod.string(),
   "displayName": zod.string(),
-  "avatarUrl": zod.string().url().nullish()
+  "avatarUrl": zod.string().url().nullish(),
+  "isFollowing": zod.boolean().optional()
 }),
   "caption": zod.string(),
+  "audioTitle": zod.string(),
   "playbackUrl": zod.string().url(),
   "durationSec": zod.number(),
+  "visibility": zod.enum(['public', 'followers', 'private']),
   "likesCount": zod.number().int(),
   "commentsCount": zod.number().int(),
+  "favoritesCount": zod.number().int(),
+  "sharesCount": zod.number().int(),
   "isLikedByMe": zod.boolean(),
+  "isFavoritedByMe": zod.boolean(),
   "createdAt": zod.coerce.date()
 })
+
+
+/**
+ * @summary Get a video the current viewer is allowed to see
+ */
+export const GetVideoParams = zod.object({
+  "videoId": zod.coerce.string()
+})
+
+export const GetVideoResponse = zod.object({
+  "id": zod.string(),
+  "creator": zod.object({
+  "id": zod.string(),
+  "username": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().url().nullish(),
+  "isFollowing": zod.boolean().optional()
+}),
+  "caption": zod.string(),
+  "audioTitle": zod.string(),
+  "playbackUrl": zod.string().url(),
+  "durationSec": zod.number(),
+  "visibility": zod.enum(['public', 'followers', 'private']),
+  "likesCount": zod.number().int(),
+  "commentsCount": zod.number().int(),
+  "favoritesCount": zod.number().int(),
+  "sharesCount": zod.number().int(),
+  "isLikedByMe": zod.boolean(),
+  "isFavoritedByMe": zod.boolean(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Toggle a saved favorite
+ */
+export const FavoriteVideoParams = zod.object({
+  "videoId": zod.coerce.string()
+})
+
+export const FavoriteVideoResponse = zod.object({
+  "isFavorited": zod.boolean(),
+  "favoritesCount": zod.number().int()
+})
+
+
+/**
+ * @summary Get the signed-in user's saved videos
+ */
+export const getFavoritesQueryLimitDefault = 12;
+export const getFavoritesQueryLimitMax = 20;
+
+
+
+export const GetFavoritesQueryParams = zod.object({
+  "limit": zod.coerce.number().int().min(1).max(getFavoritesQueryLimitMax).default(getFavoritesQueryLimitDefault),
+  "cursor": zod.coerce.string().optional()
+})
+
+export const GetFavoritesResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "creator": zod.object({
+  "id": zod.string(),
+  "username": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().url().nullish(),
+  "isFollowing": zod.boolean().optional()
+}),
+  "caption": zod.string(),
+  "audioTitle": zod.string(),
+  "playbackUrl": zod.string().url(),
+  "durationSec": zod.number(),
+  "visibility": zod.enum(['public', 'followers', 'private']),
+  "likesCount": zod.number().int(),
+  "commentsCount": zod.number().int(),
+  "favoritesCount": zod.number().int(),
+  "sharesCount": zod.number().int(),
+  "isLikedByMe": zod.boolean(),
+  "isFavoritedByMe": zod.boolean(),
+  "createdAt": zod.coerce.date()
+})),
+  "nextCursor": zod.string().nullish()
+})
+
+
+/**
+ * @summary Record a completed copy or native share
+ */
+export const ShareVideoParams = zod.object({
+  "videoId": zod.coerce.string()
+})
+
+export const ShareVideoBody = zod.object({
+  "method": zod.enum(['copy', 'native'])
+})
+
+export const ShareVideoResponse = zod.object({
+  "shareUrl": zod.string().url(),
+  "sharesCount": zod.number().int()
+})
+
+
+/**
+ * @summary Serve a public video share and browser fallback page
+ */
+export const GetPublicVideoSharePageParams = zod.object({
+  "videoId": zod.coerce.string()
+})
+
+export const GetPublicVideoSharePageResponse = zod.unknown()
 
 
 /**
@@ -255,7 +457,8 @@ export const GetCommentsResponse = zod.object({
   "id": zod.string(),
   "username": zod.string(),
   "displayName": zod.string(),
-  "avatarUrl": zod.string().url().nullish()
+  "avatarUrl": zod.string().url().nullish(),
+  "isFollowing": zod.boolean().optional()
 }),
   "body": zod.string(),
   "createdAt": zod.coerce.date()
@@ -285,7 +488,8 @@ export const CreateCommentResponse = zod.object({
   "id": zod.string(),
   "username": zod.string(),
   "displayName": zod.string(),
-  "avatarUrl": zod.string().url().nullish()
+  "avatarUrl": zod.string().url().nullish(),
+  "isFollowing": zod.boolean().optional()
 }),
   "body": zod.string(),
   "createdAt": zod.coerce.date()
@@ -308,7 +512,8 @@ export const SearchResponse = zod.object({
   "id": zod.string(),
   "username": zod.string(),
   "displayName": zod.string(),
-  "avatarUrl": zod.string().url().nullish()
+  "avatarUrl": zod.string().url().nullish(),
+  "isFollowing": zod.boolean()
 }).and(zod.object({
   "bio": zod.string(),
   "followersCount": zod.number().int(),
@@ -323,14 +528,20 @@ export const SearchResponse = zod.object({
   "id": zod.string(),
   "username": zod.string(),
   "displayName": zod.string(),
-  "avatarUrl": zod.string().url().nullish()
+  "avatarUrl": zod.string().url().nullish(),
+  "isFollowing": zod.boolean().optional()
 }),
   "caption": zod.string(),
+  "audioTitle": zod.string(),
   "playbackUrl": zod.string().url(),
   "durationSec": zod.number(),
+  "visibility": zod.enum(['public', 'followers', 'private']),
   "likesCount": zod.number().int(),
   "commentsCount": zod.number().int(),
+  "favoritesCount": zod.number().int(),
+  "sharesCount": zod.number().int(),
   "isLikedByMe": zod.boolean(),
+  "isFavoritedByMe": zod.boolean(),
   "createdAt": zod.coerce.date()
 }))
 })
@@ -379,11 +590,203 @@ export const GetNotificationsResponse = zod.object({
   "id": zod.string(),
   "username": zod.string(),
   "displayName": zod.string(),
-  "avatarUrl": zod.string().url().nullish()
+  "avatarUrl": zod.string().url().nullish(),
+  "isFollowing": zod.boolean().optional()
 }),
   "videoId": zod.string().nullish(),
   "createdAt": zod.coerce.date()
 }))
+})
+
+
+/**
+ * @summary Get message privacy settings
+ */
+export const GetMessagingSettingsResponse = zod.object({
+  "allowFrom": zod.enum(['followers', 'following', 'mutual', 'everyone', 'nobody'])
+})
+
+
+/**
+ * @summary Update message privacy settings
+ */
+export const UpdateMessagingSettingsBody = zod.object({
+  "allowFrom": zod.enum(['followers', 'following', 'mutual', 'everyone', 'nobody'])
+})
+
+export const UpdateMessagingSettingsResponse = zod.object({
+  "allowFrom": zod.enum(['followers', 'following', 'mutual', 'everyone', 'nobody'])
+})
+
+
+/**
+ * @summary List conversations for the signed-in user
+ */
+export const GetConversationsResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "otherUser": zod.object({
+  "id": zod.string(),
+  "username": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().url().nullish(),
+  "isFollowing": zod.boolean().optional()
+}),
+  "lastMessage": zod.string().nullable(),
+  "updatedAt": zod.coerce.date(),
+  "unreadCount": zod.number().int()
+}))
+})
+
+
+/**
+ * @summary Create or reopen a permitted conversation
+ */
+
+
+
+export const StartConversationBody = zod.object({
+  "userId": zod.string().min(1)
+})
+
+export const StartConversationResponse = zod.object({
+  "id": zod.string(),
+  "otherUser": zod.object({
+  "id": zod.string(),
+  "username": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().url().nullish(),
+  "isFollowing": zod.boolean().optional()
+}),
+  "lastMessage": zod.string().nullable(),
+  "updatedAt": zod.coerce.date(),
+  "unreadCount": zod.number().int()
+})
+
+
+/**
+ * @summary Get and mark a page of conversation messages as read
+ */
+export const GetConversationMessagesParams = zod.object({
+  "conversationId": zod.coerce.string()
+})
+
+export const getConversationMessagesQueryLimitDefault = 30;
+export const getConversationMessagesQueryLimitMax = 50;
+
+
+
+export const GetConversationMessagesQueryParams = zod.object({
+  "limit": zod.coerce.number().int().min(1).max(getConversationMessagesQueryLimitMax).default(getConversationMessagesQueryLimitDefault),
+  "cursor": zod.coerce.string().optional()
+})
+
+export const GetConversationMessagesResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "sender": zod.object({
+  "id": zod.string(),
+  "username": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().url().nullish(),
+  "isFollowing": zod.boolean().optional()
+}),
+  "body": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "isRead": zod.boolean()
+})),
+  "nextCursor": zod.string().nullish()
+})
+
+
+/**
+ * @summary Send a persisted message to a permitted conversation
+ */
+export const SendMessageParams = zod.object({
+  "conversationId": zod.coerce.string()
+})
+
+export const sendMessageBodyBodyMax = 2000;
+
+
+
+export const SendMessageBody = zod.object({
+  "body": zod.string().min(1).max(sendMessageBodyBodyMax)
+})
+
+export const SendMessageResponse = zod.object({
+  "id": zod.string(),
+  "sender": zod.object({
+  "id": zod.string(),
+  "username": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().url().nullish(),
+  "isFollowing": zod.boolean().optional()
+}),
+  "body": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "isRead": zod.boolean()
+})
+
+
+/**
+ * @summary Block a user and disable direct messaging
+ */
+export const BlockUserParams = zod.object({
+  "userId": zod.coerce.string()
+})
+
+export const BlockUserResponse = zod.object({
+  "blocked": zod.boolean()
+})
+
+
+/**
+ * @summary Unblock a user
+ */
+export const UnblockUserParams = zod.object({
+  "userId": zod.coerce.string()
+})
+
+export const UnblockUserResponse = zod.object({
+  "blocked": zod.boolean()
+})
+
+
+/**
+ * @summary List users blocked by the signed-in user
+ */
+export const GetBlockedUsersResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "username": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().url().nullish(),
+  "isFollowing": zod.boolean().optional()
+})),
+  "nextCursor": zod.string().nullish()
+})
+
+
+/**
+ * @summary Submit a report about a user or conversation
+ */
+
+export const reportUserBodyDetailsMax = 1000;
+
+
+
+export const ReportUserBody = zod.object({
+  "reportedUserId": zod.string().min(1),
+  "videoId": zod.string().optional(),
+  "messageId": zod.string().optional(),
+  "reason": zod.enum(['spam', 'harassment', 'impersonation', 'unsafe', 'other']),
+  "details": zod.string().max(reportUserBodyDetailsMax).optional()
+})
+
+export const ReportUserResponse = zod.object({
+  "id": zod.string(),
+  "createdAt": zod.coerce.date()
 })
 
 

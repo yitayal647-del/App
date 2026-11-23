@@ -20,6 +20,8 @@ tags:
     description: Secure direct-to-object-storage video uploads.
   - name: Notifications
     description: Account notifications.
+  - name: Messaging
+    description: Private conversations and message privacy settings.
 paths:
   /healthz:
     get:
@@ -146,12 +148,90 @@ paths:
           description: Sign-in is required.
         "404":
           description: Profile not found.
+  /profiles/{profileId}/followers:
+    get:
+      operationId: getFollowers
+      tags: [Profiles]
+      summary: Get a page of a creator's followers
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 80
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 25
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A page of followers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeopleResponse"
+        "404":
+          description: Profile not found.
+  /profiles/{profileId}/following:
+    get:
+      operationId: getFollowing
+      tags: [Profiles]
+      summary: Get a page of a creator's following list
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 80
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 25
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A page of followed creators.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeopleResponse"
+        "404":
+          description: Profile not found.
   /feed:
     get:
       operationId: getFeed
       tags: [Feed]
       summary: Get a page of public videos
       parameters:
+        - name: mode
+          in: query
+          schema:
+            type: string
+            enum: [for-you, following]
+            default: for-you
         - name: limit
           in: query
           schema:
@@ -197,6 +277,122 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "401":
           description: Sign-in is required.
+  /videos/{videoId}:
+    get:
+      operationId: getVideo
+      tags: [Feed]
+      summary: Get a video the current viewer is allowed to see
+      parameters:
+        - name: videoId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A visible video.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoItem"
+        "404":
+          description: Video not found or not visible to the viewer.
+  /videos/{videoId}/favorite:
+    post:
+      operationId: favoriteVideo
+      tags: [Feed]
+      summary: Toggle a saved favorite
+      parameters:
+        - name: videoId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Current favorite state and count.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FavoriteResponse"
+        "401":
+          description: Sign-in is required.
+        "404":
+          description: Video not found or not visible to the viewer.
+  /favorites:
+    get:
+      operationId: getFavorites
+      tags: [Feed]
+      summary: Get the signed-in user's saved videos
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 12
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A page of saved videos.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedResponse"
+        "401":
+          description: Sign-in is required.
+  /videos/{videoId}/share:
+    post:
+      operationId: shareVideo
+      tags: [Feed]
+      summary: Record a completed copy or native share
+      parameters:
+        - name: videoId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShareBody"
+      responses:
+        "200":
+          description: Stable public share link and genuine share count.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShareResponse"
+        "401":
+          description: Sign-in is required.
+        "404":
+          description: Video is not public or does not exist.
+  /share/{videoId}:
+    get:
+      operationId: getPublicVideoSharePage
+      tags: [Feed]
+      summary: Serve a public video share and browser fallback page
+      parameters:
+        - name: videoId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A public HTML video page.
+          content:
+            text/html:
+              schema:
+                type: string
+        "404":
+          description: Video is not public or does not exist.
   /videos/{videoId}/like:
     post:
       operationId: likeVideo
@@ -335,6 +531,215 @@ paths:
                 $ref: "#/components/schemas/NotificationList"
         "401":
           description: Sign-in is required.
+  /profiles/me/messaging-settings:
+    get:
+      operationId: getMessagingSettings
+      tags: [Messaging]
+      summary: Get message privacy settings
+      responses:
+        "200":
+          description: Current message privacy setting.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessagingSettings"
+        "401":
+          description: Sign-in is required.
+    patch:
+      operationId: updateMessagingSettings
+      tags: [Messaging]
+      summary: Update message privacy settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessagingSettingsBody"
+      responses:
+        "200":
+          description: Updated message privacy setting.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessagingSettings"
+        "401":
+          description: Sign-in is required.
+  /conversations:
+    get:
+      operationId: getConversations
+      tags: [Messaging]
+      summary: List conversations for the signed-in user
+      responses:
+        "200":
+          description: Recent conversations.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationList"
+        "401":
+          description: Sign-in is required.
+    post:
+      operationId: startConversation
+      tags: [Messaging]
+      summary: Create or reopen a permitted conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartConversationBody"
+      responses:
+        "200":
+          description: Existing conversation opened.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationSummary"
+        "201":
+          description: Conversation created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationSummary"
+        "401":
+          description: Sign-in is required.
+        "403":
+          description: Message privacy settings do not allow this conversation.
+  /conversations/{conversationId}/messages:
+    get:
+      operationId: getConversationMessages
+      tags: [Messaging]
+      summary: Get and mark a page of conversation messages as read
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 30
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A page of messages.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessagesResponse"
+        "403":
+          description: The signed-in user is not a conversation participant.
+        "404":
+          description: Conversation not found.
+    post:
+      operationId: sendMessage
+      tags: [Messaging]
+      summary: Send a persisted message to a permitted conversation
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageBody"
+      responses:
+        "201":
+          description: Message stored and delivered to the conversation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageItem"
+        "401":
+          description: Sign-in is required.
+        "403":
+          description: The user cannot send messages in this conversation.
+        "429":
+          description: Message rate limit reached.
+  /users/{userId}/block:
+    post:
+      operationId: blockUser
+      tags: [Messaging]
+      summary: Block a user and disable direct messaging
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User blocked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlockResponse"
+        "401":
+          description: Sign-in is required.
+    delete:
+      operationId: unblockUser
+      tags: [Messaging]
+      summary: Unblock a user
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User unblocked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlockResponse"
+        "401":
+          description: Sign-in is required.
+  /users/blocked:
+    get:
+      operationId: getBlockedUsers
+      tags: [Messaging]
+      summary: List users blocked by the signed-in user
+      responses:
+        "200":
+          description: Blocked user profiles.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeopleResponse"
+        "401":
+          description: Sign-in is required.
+  /reports:
+    post:
+      operationId: reportUser
+      tags: [Messaging]
+      summary: Submit a report about a user or conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportBody"
+      responses:
+        "201":
+          description: Report saved for review.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportResponse"
+        "401":
+          description: Sign-in is required.
 components:
   schemas:
     HealthStatus:
@@ -363,6 +768,8 @@ components:
         avatarUrl:
           type: [string, "null"]
           format: uri
+        isFollowing:
+          type: boolean
     UserProfile:
       allOf:
         - $ref: "#/components/schemas/ProfileSummary"
@@ -401,7 +808,7 @@ components:
           format: uri
     VideoItem:
       type: object
-      required: [id, creator, caption, playbackUrl, durationSec, likesCount, commentsCount, isLikedByMe, createdAt]
+      required: [id, creator, caption, audioTitle, playbackUrl, durationSec, visibility, likesCount, commentsCount, favoritesCount, sharesCount, isLikedByMe, isFavoritedByMe, createdAt]
       properties:
         id:
           type: string
@@ -409,16 +816,27 @@ components:
           $ref: "#/components/schemas/ProfileSummary"
         caption:
           type: string
+        audioTitle:
+          type: string
         playbackUrl:
           type: string
           format: uri
         durationSec:
           type: number
+        visibility:
+          type: string
+          enum: [public, followers, private]
         likesCount:
           type: integer
         commentsCount:
           type: integer
+        favoritesCount:
+          type: integer
+        sharesCount:
+          type: integer
         isLikedByMe:
+          type: boolean
+        isFavoritedByMe:
           type: boolean
         createdAt:
           type: string
@@ -460,7 +878,7 @@ components:
           $ref: "#/components/schemas/UploadUrlRequest"
     PublishVideoBody:
       type: object
-      required: [objectPath, caption, durationSec, sizeBytes, contentType]
+      required: [objectPath, caption, durationSec, sizeBytes, contentType, visibility]
       properties:
         objectPath:
           type: string
@@ -478,6 +896,155 @@ components:
         contentType:
           type: string
           minLength: 1
+        visibility:
+          type: string
+          enum: [public, followers, private]
+        audioTitle:
+          type: string
+          maxLength: 100
+    FavoriteResponse:
+      type: object
+      required: [isFavorited, favoritesCount]
+      properties:
+        isFavorited:
+          type: boolean
+        favoritesCount:
+          type: integer
+    ShareBody:
+      type: object
+      required: [method]
+      properties:
+        method:
+          type: string
+          enum: [copy, native]
+    ShareResponse:
+      type: object
+      required: [shareUrl, sharesCount]
+      properties:
+        shareUrl:
+          type: string
+          format: uri
+        sharesCount:
+          type: integer
+    PeopleResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProfileSummary"
+        nextCursor:
+          type: [string, "null"]
+    MessagingSettings:
+      type: object
+      required: [allowFrom]
+      properties:
+        allowFrom:
+          type: string
+          enum: [followers, following, mutual, everyone, nobody]
+    MessagingSettingsBody:
+      type: object
+      required: [allowFrom]
+      properties:
+        allowFrom:
+          type: string
+          enum: [followers, following, mutual, everyone, nobody]
+    StartConversationBody:
+      type: object
+      required: [userId]
+      properties:
+        userId:
+          type: string
+          minLength: 1
+    ConversationSummary:
+      type: object
+      required: [id, otherUser, lastMessage, updatedAt, unreadCount]
+      properties:
+        id:
+          type: string
+        otherUser:
+          $ref: "#/components/schemas/ProfileSummary"
+        lastMessage:
+          type: [string, "null"]
+        updatedAt:
+          type: string
+          format: date-time
+        unreadCount:
+          type: integer
+    ConversationList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConversationSummary"
+    SendMessageBody:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 2000
+    MessageItem:
+      type: object
+      required: [id, sender, body, createdAt, isRead]
+      properties:
+        id:
+          type: string
+        sender:
+          $ref: "#/components/schemas/ProfileSummary"
+        body:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        isRead:
+          type: boolean
+    MessagesResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MessageItem"
+        nextCursor:
+          type: [string, "null"]
+    BlockResponse:
+      type: object
+      required: [blocked]
+      properties:
+        blocked:
+          type: boolean
+    ReportBody:
+      type: object
+      required: [reportedUserId, reason]
+      properties:
+        reportedUserId:
+          type: string
+          minLength: 1
+        videoId:
+          type: string
+        messageId:
+          type: string
+        reason:
+          type: string
+          enum: [spam, harassment, impersonation, unsafe, other]
+        details:
+          type: string
+          maxLength: 1000
+    ReportResponse:
+      type: object
+      required: [id, createdAt]
+      properties:
+        id:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
     LikeResponse:
       type: object
       required: [isLiked, likesCount]

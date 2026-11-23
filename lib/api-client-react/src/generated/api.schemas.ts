@@ -19,6 +19,7 @@ export interface ProfileSummary {
   displayName: string;
   /** @nullable */
   avatarUrl?: string | null;
+  isFollowing?: boolean;
 }
 
 export type UserProfile = ProfileSummary & {
@@ -48,15 +49,29 @@ export interface UpdateProfileBody {
   avatarUrl?: string | null;
 }
 
+export type VideoItemVisibility = typeof VideoItemVisibility[keyof typeof VideoItemVisibility];
+
+
+export const VideoItemVisibility = {
+  public: 'public',
+  followers: 'followers',
+  private: 'private',
+} as const;
+
 export interface VideoItem {
   id: string;
   creator: ProfileSummary;
   caption: string;
+  audioTitle: string;
   playbackUrl: string;
   durationSec: number;
+  visibility: VideoItemVisibility;
   likesCount: number;
   commentsCount: number;
+  favoritesCount: number;
+  sharesCount: number;
   isLikedByMe: boolean;
+  isFavoritedByMe: boolean;
   createdAt: string;
 }
 
@@ -84,6 +99,15 @@ export interface UploadUrlResponse {
   metadata?: UploadUrlRequest;
 }
 
+export type PublishVideoBodyVisibility = typeof PublishVideoBodyVisibility[keyof typeof PublishVideoBodyVisibility];
+
+
+export const PublishVideoBodyVisibility = {
+  public: 'public',
+  followers: 'followers',
+  private: 'private',
+} as const;
+
 export interface PublishVideoBody {
   /** @minLength 1 */
   objectPath: string;
@@ -98,6 +122,137 @@ export interface PublishVideoBody {
   sizeBytes: number;
   /** @minLength 1 */
   contentType: string;
+  visibility: PublishVideoBodyVisibility;
+  /** @maxLength 100 */
+  audioTitle?: string;
+}
+
+export interface FavoriteResponse {
+  isFavorited: boolean;
+  favoritesCount: number;
+}
+
+export type ShareBodyMethod = typeof ShareBodyMethod[keyof typeof ShareBodyMethod];
+
+
+export const ShareBodyMethod = {
+  copy: 'copy',
+  native: 'native',
+} as const;
+
+export interface ShareBody {
+  method: ShareBodyMethod;
+}
+
+export interface ShareResponse {
+  shareUrl: string;
+  sharesCount: number;
+}
+
+export interface PeopleResponse {
+  items: ProfileSummary[];
+  /** @nullable */
+  nextCursor?: string | null;
+}
+
+export type MessagingSettingsAllowFrom = typeof MessagingSettingsAllowFrom[keyof typeof MessagingSettingsAllowFrom];
+
+
+export const MessagingSettingsAllowFrom = {
+  followers: 'followers',
+  following: 'following',
+  mutual: 'mutual',
+  everyone: 'everyone',
+  nobody: 'nobody',
+} as const;
+
+export interface MessagingSettings {
+  allowFrom: MessagingSettingsAllowFrom;
+}
+
+export type MessagingSettingsBodyAllowFrom = typeof MessagingSettingsBodyAllowFrom[keyof typeof MessagingSettingsBodyAllowFrom];
+
+
+export const MessagingSettingsBodyAllowFrom = {
+  followers: 'followers',
+  following: 'following',
+  mutual: 'mutual',
+  everyone: 'everyone',
+  nobody: 'nobody',
+} as const;
+
+export interface MessagingSettingsBody {
+  allowFrom: MessagingSettingsBodyAllowFrom;
+}
+
+export interface StartConversationBody {
+  /** @minLength 1 */
+  userId: string;
+}
+
+export interface ConversationSummary {
+  id: string;
+  otherUser: ProfileSummary;
+  /** @nullable */
+  lastMessage: string | null;
+  updatedAt: string;
+  unreadCount: number;
+}
+
+export interface ConversationList {
+  items: ConversationSummary[];
+}
+
+export interface SendMessageBody {
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  body: string;
+}
+
+export interface MessageItem {
+  id: string;
+  sender: ProfileSummary;
+  body: string;
+  createdAt: string;
+  isRead: boolean;
+}
+
+export interface MessagesResponse {
+  items: MessageItem[];
+  /** @nullable */
+  nextCursor?: string | null;
+}
+
+export interface BlockResponse {
+  blocked: boolean;
+}
+
+export type ReportBodyReason = typeof ReportBodyReason[keyof typeof ReportBodyReason];
+
+
+export const ReportBodyReason = {
+  spam: 'spam',
+  harassment: 'harassment',
+  impersonation: 'impersonation',
+  unsafe: 'unsafe',
+  other: 'other',
+} as const;
+
+export interface ReportBody {
+  /** @minLength 1 */
+  reportedUserId: string;
+  videoId?: string;
+  messageId?: string;
+  reason: ReportBodyReason;
+  /** @maxLength 1000 */
+  details?: string;
+}
+
+export interface ReportResponse {
+  id: string;
+  createdAt: string;
 }
 
 export interface LikeResponse {
@@ -167,7 +322,51 @@ limit?: number;
 cursor?: string;
 };
 
+export type GetFollowersParams = {
+/**
+ * @maxLength 80
+ */
+q?: string;
+/**
+ * @minimum 1
+ * @maximum 50
+ */
+limit?: number;
+cursor?: string;
+};
+
+export type GetFollowingParams = {
+/**
+ * @maxLength 80
+ */
+q?: string;
+/**
+ * @minimum 1
+ * @maximum 50
+ */
+limit?: number;
+cursor?: string;
+};
+
 export type GetFeedParams = {
+mode?: GetFeedMode;
+/**
+ * @minimum 1
+ * @maximum 20
+ */
+limit?: number;
+cursor?: string;
+};
+
+export type GetFeedMode = typeof GetFeedMode[keyof typeof GetFeedMode];
+
+
+export const GetFeedMode = {
+  'for-you': 'for-you',
+  following: 'following',
+} as const;
+
+export type GetFavoritesParams = {
 /**
  * @minimum 1
  * @maximum 20
@@ -191,5 +390,14 @@ export type SearchParams = {
  * @maxLength 80
  */
 q: string;
+};
+
+export type GetConversationMessagesParams = {
+/**
+ * @minimum 1
+ * @maximum 50
+ */
+limit?: number;
+cursor?: string;
 };
 
