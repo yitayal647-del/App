@@ -6,15 +6,21 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ProfileSummary } from './profileSummary';
+import type { VideoItemVisibility } from './videoItemVisibility';
 
 export interface VideoItem {
   id: string;
   creator: ProfileSummary;
   caption: string;
+  audioTitle: string;
   playbackUrl: string;
   durationSec: number;
+  visibility: VideoItemVisibility;
   likesCount: number;
   commentsCount: number;
+  favoritesCount: number;
+  sharesCount: number;
   isLikedByMe: boolean;
+  isFavoritedByMe: boolean;
   createdAt: Date;
 }

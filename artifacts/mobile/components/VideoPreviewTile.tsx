@@ -2,11 +2,13 @@ import { Feather } from "@expo/vector-icons";
 import { VideoView, useVideoPlayer } from "expo-video";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useRouter } from "expo-router";
 import type { VideoItem } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
 
 export function VideoPreviewTile({ video }: { video: VideoItem }) {
   const colors = useColors();
+  const router = useRouter();
   const [playing, setPlaying] = useState(false);
   const player = useVideoPlayer(video.playbackUrl, (instance) => {
     instance.loop = true;
@@ -39,12 +41,17 @@ export function VideoPreviewTile({ video }: { video: VideoItem }) {
           </View>
         ) : null}
       </Pressable>
-      <Text numberOfLines={2} style={[styles.caption, { color: colors.foreground }]}>
-        {video.caption || "Untitled video"}
-      </Text>
-      <Text style={[styles.stats, { color: colors.mutedForeground }]}>
-        {video.likesCount} likes · {video.commentsCount} comments
-      </Text>
+      <Pressable
+        accessibilityRole="link"
+        onPress={() => router.push(`/video/${video.id}` as never)}
+      >
+        <Text numberOfLines={2} style={[styles.caption, { color: colors.foreground }]}>
+          {video.caption || "Untitled video"}
+        </Text>
+        <Text style={[styles.stats, { color: colors.mutedForeground }]}>
+          {video.likesCount} likes · {video.commentsCount} comments
+        </Text>
+      </Pressable>
     </View>
   );
 }

@@ -8,6 +8,7 @@ import {
   getGetProfileVideosQueryKey,
   usePublishVideo,
   useRequestUploadUrl,
+  type PublishVideoBodyVisibility,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
@@ -42,6 +43,8 @@ export default function UploadScreen() {
   const wasCancelled = useRef(false);
   const [asset, setAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [caption, setCaption] = useState("");
+  const [audioTitle, setAudioTitle] = useState("");
+  const [visibility, setVisibility] = useState<PublishVideoBodyVisibility>("public");
   const [progress, setProgress] = useState(0);
   const [stage, setStage] = useState<"idle" | "uploading" | "publishing">("idle");
   const [error, setError] = useState("");
@@ -118,6 +121,8 @@ export default function UploadScreen() {
       setAsset(nextAsset);
       setProgress(0);
       setCaption("");
+      setAudioTitle("");
+      setVisibility("public");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The video library could not be opened.");
     }
@@ -165,9 +170,11 @@ export default function UploadScreen() {
         data: {
           objectPath: signed.objectPath,
           caption: caption.trim(),
+          audioTitle: audioTitle.trim(),
           durationSec,
           sizeBytes: Math.floor(fileSize),
           contentType,
+          visibility,
         },
       });
       await Promise.all([
@@ -179,6 +186,8 @@ export default function UploadScreen() {
       ]);
       setAsset(null);
       setCaption("");
+      setAudioTitle("");
+      setVisibility("public");
       setStage("idle");
       setProgress(0);
       router.replace("/(tabs)");
@@ -256,6 +265,61 @@ export default function UploadScreen() {
             <Text style={[styles.counter, { color: colors.mutedForeground }]}>
               {caption.length}/2200
             </Text>
+            <Text style={[styles.label, { color: colors.foreground }]}>Audio credit</Text>
+            <TextInput
+              value={audioTitle}
+              onChangeText={setAudioTitle}
+              maxLength={100}
+              placeholder="Optional track or sound title"
+              placeholderTextColor={colors.mutedForeground}
+              editable={!busy}
+              style={[
+                styles.audioInput,
+                { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card },
+              ]}
+            />
+            <Text style={[styles.label, { color: colors.foreground }]}>Who can watch?</Text>
+            <View style={styles.visibilityChoices}>
+              {([
+                ["public", "Everyone"],
+                ["followers", "Followers"],
+                ["private", "Only me"],
+              ] as const).map(([value, label]) => {
+                const selected = visibility === value;
+                return (
+                  <Pressable
+                    key={value}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    disabled={busy}
+                    onPress={() => setVisibility(value)}
+                    style={[
+                      styles.visibilityChoice,
+                      {
+                        borderColor: selected ? colors.primary : colors.border,
+                        backgroundColor: selected ? colors.accent : colors.card,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.visibilityChoiceText,
+                        { color: selected ? colors.primary : colors.mutedForeground },
+                      ]}
+                    >
+                      {label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={[styles.visibilityHint, { color: colors.mutedForeground }]}>
+              {visibility === "public"
+                ? "Public videos can appear in For You and be shared."
+                : visibility === "followers"
+                  ? "Only you and people who follow you can watch this video."
+                  : "Only you can watch this video. It will not have a public share link."}
+            </Text>
             {busy ? (
               <View style={[styles.progressCard, { borderColor: colors.border, backgroundColor: colors.card }]}>
                 <View style={styles.progressTitleRow}>
@@ -296,7 +360,7 @@ export default function UploadScreen() {
         <View style={[styles.guidance, { borderColor: colors.border }]}>
           <Feather name="shield" size={16} color={colors.primary} />
           <Text style={[styles.guidanceText, { color: colors.mutedForeground }]}>
-            Your video uploads directly to private media storage. It appears publicly only after you publish it.
+            Your video uploads directly to private media storage. The visibility you choose is enforced when people request the video.
           </Text>
         </View>
       </ScrollView>
@@ -329,6 +393,11 @@ const styles = StyleSheet.create({
   changeText: { fontFamily: "Inter_600SemiBold", fontSize: 12, padding: 8 },
   label: { fontFamily: "Inter_600SemiBold", fontSize: 12, marginTop: 10, marginBottom: 8 },
   captionInput: { minHeight: 104, borderWidth: 1, borderRadius: 14, padding: 14, textAlignVertical: "top", fontFamily: "Inter_400Regular", fontSize: 14, lineHeight: 21 },
+  audioInput: { minHeight: 48, borderWidth: 1, borderRadius: 14, paddingHorizontal: 14, fontFamily: "Inter_400Regular", fontSize: 13 },
+  visibilityChoices: { flexDirection: "row", gap: 8 },
+  visibilityChoice: { minHeight: 42, flex: 1, borderWidth: 1, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  visibilityChoiceText: { fontFamily: "Inter_600SemiBold", fontSize: 11 },
+  visibilityHint: { fontFamily: "Inter_400Regular", fontSize: 11, lineHeight: 16, marginTop: 8 },
   counter: { alignSelf: "flex-end", fontFamily: "Inter_400Regular", fontSize: 10, marginTop: 7 },
   publishButton: { marginTop: 17 },
   progressCard: { borderWidth: 1, borderRadius: 16, padding: 15, marginTop: 15 },

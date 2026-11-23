@@ -12,10 +12,12 @@ import { useColors } from "@/hooks/useColors";
 export default function HomeScreen() {
   const colors = useColors();
   const router = useRouter();
+  const [mode, setMode] = useState<"for-you" | "following">("for-you");
   const feed = useInfiniteQuery({
-    queryKey: getGetFeedQueryKey({ limit: 20 }),
+    queryKey: getGetFeedQueryKey({ mode, limit: 20 }),
     initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam, signal }) => getFeed({ limit: 20, cursor: pageParam }, { signal }),
+    queryFn: ({ pageParam, signal }) =>
+      getFeed({ mode, limit: 20, cursor: pageParam }, { signal }),
     getNextPageParam: (page) => page.nextCursor ?? undefined,
     staleTime: 30_000,
   });
@@ -31,23 +33,6 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView edges={["top"]} style={[styles.screen, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <View style={styles.brand}>
-          <Image source={require("../../assets/images/icon.png")} style={styles.logo} />
-          <View>
-            <Text style={[styles.wordmark, { color: colors.foreground }]}>YOU ALL</Text>
-            <Text style={[styles.subhead, { color: colors.mutedForeground }]}>FOR YOU</Text>
-          </View>
-        </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Discover creators"
-          onPress={() => router.navigate("/(tabs)/discover" as never)}
-          style={[styles.headerAction, { borderColor: colors.border }]}
-        >
-          <Feather name="globe" size={17} color={colors.primary} />
-        </Pressable>
-      </View>
       <View style={styles.feed} onLayout={(event) => setFeedHeight(event.nativeEvent.layout.height)}>
         {feed.isLoading ? (
           <StateMessage title="Finding your feed" detail="Loading public videos from YOU ALL." loading />
@@ -60,7 +45,8 @@ export default function HomeScreen() {
             onAction={() => void feed.refetch()}
           />
         ) : videos.length ? (
-          <FlatList
+            <FlatList
+            key={mode}
             data={videos}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
@@ -91,13 +77,58 @@ export default function HomeScreen() {
           />
         ) : (
           <StateMessage
-            title="The feed is quiet"
-            detail="There are no public videos yet. Share your first video or search for creators."
-            icon="film"
-            actionLabel="Share a video"
-            onAction={() => router.navigate("/(tabs)/upload" as never)}
+            title={mode === "following" ? "Follow a few creators" : "The feed is quiet"}
+            detail={
+              mode === "following"
+                ? "Videos from creators you follow will appear here."
+                : "There are no public videos yet. Share your first video or search for creators."
+            }
+            icon={mode === "following" ? "users" : "film"}
+            actionLabel={mode === "following" ? "Discover creators" : "Share a video"}
+            onAction={() =>
+              router.navigate(
+                mode === "following" ? "/(tabs)/discover" as never : "/(tabs)/upload" as never,
+              )
+            }
           />
         )}
+      </View>
+      <View pointerEvents="box-none" style={styles.header}>
+        <View style={styles.brandRow}>
+          <View style={styles.brand}>
+            <Image source={require("../../assets/images/icon.png")} style={styles.logo} />
+            <Text style={styles.wordmark}>YOU ALL</Text>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open your profile"
+            onPress={() => router.navigate("/(tabs)/profile" as never)}
+            style={styles.profileButton}
+          >
+            <Feather name="user" size={17} color="#F3D899" />
+          </Pressable>
+        </View>
+        <View style={styles.tabs}>
+          {([
+            ["for-you", "For You"],
+            ["following", "Following"],
+          ] as const).map(([value, title]) => {
+            const selected = mode === value;
+            return (
+              <Pressable
+                key={value}
+                accessibilityRole="tab"
+                accessibilityState={{ selected }}
+                onPress={() => setMode(value)}
+                style={[styles.feedTab, selected && styles.feedTabActive]}
+              >
+                <Text style={[styles.feedTabText, selected && styles.feedTabTextActive]}>
+                  {title}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -105,25 +136,34 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  feed: { flex: 1 },
   header: {
-    height: 60,
-    paddingHorizontal: 19,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 5,
+    paddingHorizontal: 17,
+    paddingTop: 5,
+    paddingBottom: 8,
   },
-  brand: { flexDirection: "row", alignItems: "center", gap: 10 },
-  logo: { width: 34, height: 34, borderRadius: 11 },
-  wordmark: { fontFamily: "Inter_700Bold", fontSize: 14, letterSpacing: 2.5 },
-  subhead: { fontFamily: "Inter_600SemiBold", fontSize: 8, letterSpacing: 2, marginTop: 2 },
-  headerAction: {
+  brandRow: { height: 40, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  brand: { flexDirection: "row", alignItems: "center", gap: 9 },
+  logo: { width: 30, height: 30, borderRadius: 10 },
+  wordmark: { color: "#FFFFFF", fontFamily: "Inter_700Bold", fontSize: 14, letterSpacing: 2.5, textShadowColor: "rgba(0,0,0,0.7)", textShadowRadius: 8 },
+  profileButton: {
     width: 36,
     height: 36,
     borderWidth: 1,
-    borderRadius: 12,
+    borderColor: "rgba(255,255,255,0.38)",
+    borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.32)",
   },
-  feed: { flex: 1 },
+  tabs: { flexDirection: "row", alignSelf: "center", gap: 6, marginTop: 8, padding: 3, borderRadius: 13, backgroundColor: "rgba(0,0,0,0.48)" },
+  feedTab: { minWidth: 84, minHeight: 29, borderRadius: 10, alignItems: "center", justifyContent: "center", paddingHorizontal: 12 },
+  feedTabActive: { backgroundColor: "rgba(216,181,106,0.95)" },
+  feedTabText: { color: "rgba(255,255,255,0.8)", fontFamily: "Inter_500Medium", fontSize: 11 },
+  feedTabTextActive: { color: "#17130A", fontFamily: "Inter_700Bold" },
 });

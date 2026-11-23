@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { PublishVideoBodyVisibility } from './publishVideoBodyVisibility';
 
 export interface PublishVideoBody {
   /** @minLength 1 */
@@ -20,4 +21,7 @@ export interface PublishVideoBody {
   sizeBytes: number;
   /** @minLength 1 */
   contentType: string;
+  visibility: PublishVideoBodyVisibility;
+  /** @maxLength 100 */
+  audioTitle?: string;
 }
