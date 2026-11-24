@@ -32,7 +32,8 @@ import {
   type Response,
 } from "express";
 import { logger } from "../lib/logger";
-import { ObjectStorageService } from "../lib/objectStorage";
+import { ObjectNotFoundError, ObjectStorageService } from "../lib/objectStorage";
+import { safeErrorDetails } from "./routeErrors";
 import { canViewVideo, ensureProfile } from "./yall";
 
 const router: IRouter = Router();
@@ -43,7 +44,7 @@ function handle(handler: AsyncHandler): RequestHandler {
   return (req, res, next) => {
     void handler(req, res).catch((error: unknown) => {
       logger.error(
-        { err: error, method: req.method, path: req.path },
+        { error: safeErrorDetails(error), method: req.method, path: req.path },
         "YOU ALL social API request failed",
       );
       if (!res.headersSent) res.status(500).json({ error: "The request could not be completed." });
@@ -376,7 +377,21 @@ router.get(
       res.status(404).type("text/plain").send("This public video could not be found.");
       return;
     }
-    const playbackUrl = await storage.getObjectEntityReadURL(video.objectPath, 300);
+    let playbackUrl: string;
+    try {
+      playbackUrl = await storage.getObjectEntityReadURL(video.objectPath, 300);
+    } catch (error) {
+      if (error instanceof ObjectNotFoundError || safeErrorDetails(error).code === 404) {
+        res.status(404).type("text/plain").send("This video is no longer available.");
+        return;
+      }
+      logger.error(
+        { videoId, storageError: safeErrorDetails(error) },
+        "Could not create a public share playback URL",
+      );
+      res.status(503).type("text/plain").send("Video storage is temporarily unavailable. Try again shortly.");
+      return;
+    }
     const title = `Video by @${video.username} · YOU ALL`;
     const description = video.caption || `Watch this video by ${video.creatorName} on YOU ALL.`;
     const canonicalUrl = `${shareBase}/api/share/${encodeURIComponent(video.id)}`;

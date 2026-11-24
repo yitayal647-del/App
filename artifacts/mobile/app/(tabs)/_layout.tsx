@@ -86,35 +86,35 @@ function ClassicTabLayout() {
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color }) => <Feather name="home" size={21} color={color ?? colors.primary} />,
+          tabBarIcon: ({ color }) => <Feather name="home" size={21} color={typeof color === "string" ? color : colors.primary} />,
         }}
       />
       <Tabs.Screen
         name="discover"
         options={{
           title: 'Discover',
-          tabBarIcon: ({ color }) => <Feather name="search" size={21} color={color ?? colors.primary} />,
+          tabBarIcon: ({ color }) => <Feather name="search" size={21} color={typeof color === "string" ? color : colors.primary} />,
         }}
       />
       <Tabs.Screen
         name="upload"
         options={{
           title: 'Create',
-          tabBarIcon: ({ color }) => <Feather name="plus-square" size={21} color={color ?? colors.primary} />,
+          tabBarIcon: ({ color }) => <Feather name="plus-square" size={21} color={typeof color === "string" ? color : colors.primary} />,
         }}
       />
       <Tabs.Screen
         name="inbox"
         options={{
           title: 'Inbox',
-          tabBarIcon: ({ color }) => <Feather name="bell" size={21} color={color ?? colors.primary} />,
+          tabBarIcon: ({ color }) => <Feather name="bell" size={21} color={typeof color === "string" ? color : colors.primary} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color }) => <Feather name="user" size={21} color={color ?? colors.primary} />,
+          tabBarIcon: ({ color }) => <Feather name="user" size={21} color={typeof color === "string" ? color : colors.primary} />,
         }}
       />
     </Tabs>

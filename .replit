@@ -26,3 +26,6 @@ channel = "stable-25_05"
 
 [userenv.shared]
 EXPO_PUBLIC_APP_URL = "https://ultimate-master-build--yitayal647.replit.app"
+
+[objectStorage]
+defaultBucketID = "replit-objstore-548c2f92-c30c-40bb-9594-46eb8a5d1a02"

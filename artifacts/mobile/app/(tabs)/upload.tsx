@@ -33,6 +33,11 @@ const MAX_BYTES = 100 * 1024 * 1024;
 const MAX_SECONDS = 180;
 const allowedTypes = new Set(["video/mp4", "video/quicktime", "video/x-m4v"]);
 
+type PendingUpload = {
+  objectPath: string;
+  createdAt: number;
+};
+
 export default function UploadScreen() {
   const colors = useColors();
   const router = useRouter();
@@ -40,6 +45,7 @@ export default function UploadScreen() {
   const requestUpload = useRequestUploadUrl();
   const publishVideo = usePublishVideo();
   const uploadTask = useRef<UploadTask | null>(null);
+  const pendingUpload = useRef<PendingUpload | null>(null);
   const wasCancelled = useRef(false);
   const [asset, setAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [caption, setCaption] = useState("");
@@ -54,7 +60,7 @@ export default function UploadScreen() {
     instance.muted = true;
   });
   const busy = stage !== "idle";
-  const durationSec = asset?.duration ? asset.duration / 1000 : 0;
+  const durationSec = asset?.duration ? Math.ceil(asset.duration / 1000) : 0;
   const fileSize = asset?.fileSize ?? (asset?.uri ? new File(asset.uri).size : 0);
   const contentType =
     asset?.mimeType?.toLowerCase() ??
@@ -119,6 +125,7 @@ export default function UploadScreen() {
         return;
       }
       setAsset(nextAsset);
+      pendingUpload.current = null;
       setProgress(0);
       setCaption("");
       setAudioTitle("");
@@ -132,6 +139,7 @@ export default function UploadScreen() {
     wasCancelled.current = true;
     uploadTask.current?.cancel();
     uploadTask.current = null;
+    pendingUpload.current = null;
     setStage("idle");
     setProgress(0);
   };
@@ -144,31 +152,43 @@ export default function UploadScreen() {
     wasCancelled.current = false;
     setError("");
     try {
-      setStage("uploading");
-      const name = asset.fileName ?? asset.uri.split("/").pop() ?? "video";
-      const signed = await requestUpload.mutateAsync({
-        data: { name, size: Math.floor(fileSize), contentType },
-      });
-      const task = new File(asset.uri).createUploadTask(signed.uploadURL, {
-        httpMethod: "PUT",
-        uploadType: UploadType.BINARY_CONTENT,
-        headers: { "Content-Type": contentType },
-        onProgress: ({ bytesSent, totalBytes }) => {
-          if (totalBytes > 0) setProgress(Math.min(1, bytesSent / totalBytes));
-        },
-      });
-      uploadTask.current = task;
-      const uploadResult = await task.uploadAsync();
-      uploadTask.current = null;
-      if (wasCancelled.current) return;
-      if (uploadResult.status < 200 || uploadResult.status >= 300) {
-        throw new Error(`Video upload failed with status ${uploadResult.status}. Try again.`);
+      const session =
+        pendingUpload.current && Date.now() - pendingUpload.current.createdAt < 14 * 60 * 1000
+          ? pendingUpload.current
+          : null;
+      if (pendingUpload.current && !session) pendingUpload.current = null;
+      let objectPath = session?.objectPath;
+
+      if (!objectPath) {
+        setStage("uploading");
+        const name = asset.fileName ?? asset.uri.split("/").pop() ?? "video";
+        const signed = await requestUpload.mutateAsync({
+          data: { name, size: Math.floor(fileSize), contentType },
+        });
+        const task = new File(asset.uri).createUploadTask(signed.uploadURL, {
+          httpMethod: "PUT",
+          uploadType: UploadType.BINARY_CONTENT,
+          headers: { "Content-Type": contentType },
+          onProgress: ({ bytesSent, totalBytes }) => {
+            if (totalBytes > 0) setProgress(Math.min(1, bytesSent / totalBytes));
+          },
+        });
+        uploadTask.current = task;
+        const uploadResult = await task.uploadAsync();
+        uploadTask.current = null;
+        if (wasCancelled.current) return;
+        if (uploadResult.status < 200 || uploadResult.status >= 300) {
+          throw new Error(`Video upload failed with status ${uploadResult.status}. Try again.`);
+        }
+        objectPath = signed.objectPath;
+        pendingUpload.current = { objectPath, createdAt: Date.now() };
       }
+      if (!objectPath) throw new Error("The uploaded video reference is missing. Try again.");
 
       setStage("publishing");
       const published = await publishVideo.mutateAsync({
         data: {
-          objectPath: signed.objectPath,
+          objectPath,
           caption: caption.trim(),
           audioTitle: audioTitle.trim(),
           durationSec,
@@ -184,6 +204,7 @@ export default function UploadScreen() {
           queryKey: getGetProfileVideosQueryKey(published.creator.username, { limit: 20 }),
         }),
       ]);
+      pendingUpload.current = null;
       setAsset(null);
       setCaption("");
       setAudioTitle("");
@@ -243,7 +264,13 @@ export default function UploadScreen() {
                 </Text>
               </View>
               {!busy ? (
-                <Pressable accessibilityRole="button" onPress={() => setAsset(null)}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    pendingUpload.current = null;
+                    setAsset(null);
+                  }}
+                >
                   <Text style={[styles.changeText, { color: colors.primary }]}>Change</Text>
                 </Pressable>
               ) : null}
@@ -324,7 +351,7 @@ export default function UploadScreen() {
               <View style={[styles.progressCard, { borderColor: colors.border, backgroundColor: colors.card }]}>
                 <View style={styles.progressTitleRow}>
                   <Text style={[styles.progressTitle, { color: colors.foreground }]}>
-                    {stage === "uploading" ? "Uploading video" : "Publishing video"}
+                    {stage === "uploading" ? "Uploading video" : "Verifying and publishing"}
                   </Text>
                   <Text style={[styles.progressPercent, { color: colors.primary }]}>
                     {stage === "uploading" ? `${Math.round(progress * 100)}%` : "Almost there"}
@@ -338,13 +365,23 @@ export default function UploadScreen() {
                     ]}
                   />
                 </View>
-                <Pressable accessibilityRole="button" onPress={cancelUpload} style={styles.cancelButton}>
-                  <Text style={[styles.cancelText, { color: colors.mutedForeground }]}>Cancel upload</Text>
-                </Pressable>
+                {stage === "uploading" ? (
+                  <Pressable accessibilityRole="button" onPress={cancelUpload} style={styles.cancelButton}>
+                    <Text style={[styles.cancelText, { color: colors.mutedForeground }]}>Cancel upload</Text>
+                  </Pressable>
+                ) : (
+                  <Text style={[styles.verifyingText, { color: colors.mutedForeground }]}>
+                    Checking storage and saving your video…
+                  </Text>
+                )}
               </View>
             ) : (
               <View style={styles.publishButton}>
-                <AppButton label="Publish video" onPress={() => void publish()} disabled={!canPublish} />
+                <AppButton
+                  label={pendingUpload.current ? "Retry publishing" : "Publish video"}
+                  onPress={() => void publish()}
+                  disabled={!canPublish}
+                />
               </View>
             )}
           </>
@@ -408,6 +445,7 @@ const styles = StyleSheet.create({
   progressFill: { height: 5, borderRadius: 3 },
   cancelButton: { alignSelf: "center", paddingVertical: 12, paddingHorizontal: 14, marginTop: 4 },
   cancelText: { fontFamily: "Inter_500Medium", fontSize: 12 },
+  verifyingText: { alignSelf: "center", fontFamily: "Inter_400Regular", fontSize: 10, marginTop: 12 },
   errorCard: { flexDirection: "row", alignItems: "flex-start", gap: 8, borderWidth: 1, borderRadius: 13, padding: 13, marginTop: 14 },
   errorText: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 12, lineHeight: 18 },
   guidance: { flexDirection: "row", alignItems: "flex-start", gap: 10, borderTopWidth: 1, marginTop: 24, paddingTop: 16 },

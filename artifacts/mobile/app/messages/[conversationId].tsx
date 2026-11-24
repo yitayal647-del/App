@@ -16,6 +16,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  type ScrollViewInstance,
   Text,
   TextInput,
   View,
@@ -39,7 +40,7 @@ export default function ConversationScreen() {
   const conversation = conversations.data?.items.find((item) => item.id === conversationId);
   const [messageText, setMessageText] = useState("");
   const [sendError, setSendError] = useState("");
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance | null>(null);
   const shouldScrollToEnd = useRef(true);
   const lastMessageId = useRef<string | null>(null);
   const sendMutation = useSendMessage();

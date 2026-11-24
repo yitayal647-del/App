@@ -43,6 +43,12 @@ function RootLayoutNav() {
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="comments/[videoId]" options={{ presentation: 'modal' }} />
       <Stack.Screen name="creator/[username]" />
+      <Stack.Screen name="video/[videoId]" />
+      <Stack.Screen name="api/share/[videoId]" />
+      <Stack.Screen name="people/[username]/[list]" />
+      <Stack.Screen name="messages/[conversationId]" />
+      <Stack.Screen name="favorites" />
+      <Stack.Screen name="report/[userId]" options={{ presentation: 'modal' }} />
       <Stack.Screen name="profile/edit" />
       <Stack.Screen name="settings" />
     </Stack>

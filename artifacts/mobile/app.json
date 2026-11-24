@@ -15,14 +15,31 @@
     },
     "ios": {
       "bundleIdentifier": "com.youall.social",
-      "supportsTablet": false
+      "supportsTablet": false,
+      "associatedDomains": [
+        "applinks:ultimate-master-build--yitayal647.replit.app"
+      ]
     },
     "android": {
       "package": "com.youall.social",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#090909"
-      }
+      },
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "ultimate-master-build--yitayal647.replit.app",
+              "pathPrefix": "/api/share/"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/images/icon.png",
