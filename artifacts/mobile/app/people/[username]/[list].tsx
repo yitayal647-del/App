@@ -151,7 +151,7 @@ export default function PeopleListScreen() {
           ListFooterComponent={
             people.isFetchingNextPage ? (
               <ActivityIndicator style={styles.footer} color={colors.primary} />
-            ) : null
+            ) : undefined
           }
         />
       )}

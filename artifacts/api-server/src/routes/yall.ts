@@ -33,6 +33,7 @@ import {
 import { Router, type IRouter, type Request, type RequestHandler, type Response } from "express";
 import { logger } from "../lib/logger";
 import { ObjectNotFoundError, ObjectStorageService } from "../lib/objectStorage";
+import { safeErrorDetails } from "./routeErrors";
 
 const router: IRouter = Router();
 const storage = new ObjectStorageService();
@@ -45,6 +46,7 @@ const ALLOWED_VIDEO_TYPES = new Set([
 ]);
 
 class InvalidCursorError extends Error {}
+class StorageUnavailableError extends Error {}
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
@@ -59,8 +61,12 @@ function handle(handler: AsyncHandler): RequestHandler {
         res.status(400).json({ error: "Invalid page cursor." });
         return;
       }
+      if (error instanceof StorageUnavailableError) {
+        res.status(503).json({ error: "Video storage is temporarily unavailable. Try again shortly." });
+        return;
+      }
       logger.error(
-        { err: error, method: req.method, path: req.path },
+        { error: safeErrorDetails(error), method: req.method, path: req.path },
         "YOU ALL API request failed",
       );
       if (!res.headersSent) {
@@ -118,6 +124,22 @@ function decodeCursor(value: string | undefined): { createdAt: Date; id: string 
 
 function encodeCursor(createdAt: Date, id: string): string {
   return Buffer.from(`${createdAt.toISOString()}|${id}`).toString("base64url");
+}
+
+async function playbackUrlFor(videoId: string, objectPath: string) {
+  try {
+    return await storage.getObjectEntityReadURL(objectPath, 3600);
+  } catch (error) {
+    if (error instanceof ObjectNotFoundError) {
+      logger.warn({ videoId }, "Published video references a missing storage object");
+      return null;
+    }
+    logger.error(
+      { videoId, storageError: safeErrorDetails(error) },
+      "Could not create a video playback URL",
+    );
+    throw new StorageUnavailableError();
+  }
 }
 
 export async function ensureProfile(userId: string) {
@@ -320,30 +342,35 @@ export async function videoPage(options: {
 
   const hasMore = rows.length > options.limit;
   const page = hasMore ? rows.slice(0, options.limit) : rows;
-  const items = await Promise.all(
-    page.map(async (video) => ({
-      id: video.id,
-      creator: {
-        id: video.creatorId,
-        username: video.username,
-        displayName: video.displayName,
-        avatarUrl: video.avatarUrl,
-        isFollowing: Boolean(video.isFollowing),
-      },
-      caption: video.caption,
-      audioTitle: video.audioTitle,
-      playbackUrl: await storage.getObjectEntityReadURL(video.objectPath, 300),
-      durationSec: Number(video.durationSec),
-      visibility: video.visibility,
-      likesCount: Number(video.likesCount),
-      commentsCount: Number(video.commentsCount),
-      favoritesCount: Number(video.favoritesCount),
-      sharesCount: Number(video.sharesCount),
-      isLikedByMe: Boolean(video.isLikedByMe),
-      isFavoritedByMe: Boolean(video.isFavoritedByMe),
-      createdAt: video.createdAt.toISOString(),
-    })),
+  const resolved = await Promise.all(
+    page.map(async (video) => {
+      const playbackUrl = await playbackUrlFor(video.id, video.objectPath);
+      if (!playbackUrl) return null;
+      return {
+        id: video.id,
+        creator: {
+          id: video.creatorId,
+          username: video.username,
+          displayName: video.displayName,
+          avatarUrl: video.avatarUrl,
+          isFollowing: Boolean(video.isFollowing),
+        },
+        caption: video.caption,
+        audioTitle: video.audioTitle,
+        playbackUrl,
+        durationSec: Number(video.durationSec),
+        visibility: video.visibility,
+        likesCount: Number(video.likesCount),
+        commentsCount: Number(video.commentsCount),
+        favoritesCount: Number(video.favoritesCount),
+        sharesCount: Number(video.sharesCount),
+        isLikedByMe: Boolean(video.isLikedByMe),
+        isFavoritedByMe: Boolean(video.isFavoritedByMe),
+        createdAt: video.createdAt.toISOString(),
+      };
+    }),
   );
+  const items = resolved.filter((item) => item !== null);
 
   const last = page.at(-1);
   return {
@@ -527,8 +554,19 @@ router.post(
     }
 
     await ensureProfile(userId);
-    const uploadURL = await storage.getObjectEntityUploadURL();
-    const objectPath = storage.normalizeObjectEntityPath(uploadURL);
+    let uploadURL: string;
+    let objectPath: string;
+    try {
+      uploadURL = await storage.getObjectEntityUploadURL();
+      objectPath = storage.normalizeObjectEntityPath(uploadURL);
+    } catch (error) {
+      logger.error(
+        { storageError: safeErrorDetails(error), stage: "create-upload-url" },
+        "Video upload storage is unavailable",
+      );
+      res.status(503).json({ error: "Video storage is not available right now. Try again shortly." });
+      return;
+    }
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
     await db.insert(uploads).values({
       id: randomUUID(),
@@ -538,6 +576,7 @@ router.post(
       sizeBytes: size,
       expiresAt,
     });
+    res.setHeader("Cache-Control", "private, no-store");
     res.json({ uploadURL, objectPath, metadata: parsed.data });
   }),
 );
@@ -571,12 +610,38 @@ router.post(
         and(
           eq(uploads.userId, userId),
           eq(uploads.objectPath, input.objectPath),
-          gt(uploads.expiresAt, new Date()),
         ),
       )
       .limit(1);
-    if (!upload || upload.publishedAt) {
-      res.status(400).json({ error: "This upload has expired or was already published." });
+    if (!upload) {
+      res.status(404).json({ error: "This upload is not available for your account." });
+      return;
+    }
+    if (upload.publishedAt) {
+      const [existingVideo] = await db
+        .select({ id: videos.id })
+        .from(videos)
+        .where(eq(videos.objectPath, upload.objectPath))
+        .limit(1);
+      const existingPage = existingVideo
+        ? await videoPage({
+            viewerId: userId,
+            videoId: existingVideo.id,
+            limit: 1,
+            cursor: undefined,
+          })
+        : { items: [] };
+      const published = existingPage.items[0];
+      if (published) {
+        res.setHeader("Cache-Control", "private, no-store");
+        res.status(200).json(published);
+      } else {
+        res.status(409).json({ error: "This upload was already published, but its video is no longer available." });
+      }
+      return;
+    }
+    if (upload.expiresAt <= new Date()) {
+      res.status(400).json({ error: "This upload has expired. Choose the video again to retry." });
       return;
     }
     if (
@@ -587,10 +652,27 @@ router.post(
       return;
     }
 
-    const file = await storage.getObjectEntityFile(upload.objectPath);
-    const [metadata] = await file.getMetadata();
-    const actualSize = Number(metadata.size);
-    const actualType = String(metadata.contentType ?? "").toLowerCase();
+    let actualSize: number;
+    let actualType: string;
+    let header: Buffer;
+    try {
+      const file = await storage.getObjectEntityFile(upload.objectPath);
+      const [metadata] = await file.getMetadata();
+      actualSize = Number(metadata.size);
+      actualType = String(metadata.contentType ?? "").toLowerCase();
+      [header] = await file.download({ start: 0, end: 11 });
+    } catch (error) {
+      if (error instanceof ObjectNotFoundError || safeErrorDetails(error).code === 404) {
+        res.status(400).json({ error: "The uploaded video is missing or the upload has not finished." });
+        return;
+      }
+      logger.error(
+        { storageError: safeErrorDetails(error), stage: "verify-upload" },
+        "Could not verify the uploaded video",
+      );
+      res.status(503).json({ error: "Video storage could not verify the upload. Try again shortly." });
+      return;
+    }
     if (
       actualSize !== upload.sizeBytes ||
       actualSize > MAX_VIDEO_BYTES ||
@@ -599,41 +681,113 @@ router.post(
       res.status(400).json({ error: "The uploaded video could not be verified." });
       return;
     }
-    const [header] = await file.download({ start: 0, end: 11 });
     if (header.length < 8 || header.toString("ascii", 4, 8) !== "ftyp") {
       res.status(400).json({ error: "The uploaded file is not a supported MP4 or MOV video." });
       return;
     }
-    const playbackUrl = await storage.getObjectEntityReadURL(upload.objectPath);
-
+    const playbackUrl = await playbackUrlFor("new-upload", upload.objectPath);
+    if (!playbackUrl) {
+      res.status(400).json({ error: "The uploaded video is no longer available in storage." });
+      return;
+    }
     const user = await ensureProfile(userId);
     const videoId = randomUUID();
     const createdAt = new Date();
-    await db.transaction(async (tx) => {
-      await tx.insert(videos).values({
-        id: videoId,
-        creatorId: userId,
-        objectPath: upload.objectPath,
-        caption: input.caption.trim(),
-        audioTitle: input.audioTitle?.trim() ?? "",
-        durationSec: input.durationSec,
-        sizeBytes: actualSize,
-        contentType: actualType,
-        visibility: input.visibility,
-      });
+    const publishResult = await db.transaction(async (tx) => {
+      const [lockedUpload] = await tx
+        .select()
+        .from(uploads)
+        .where(eq(uploads.id, upload.id))
+        .for("update")
+        .limit(1);
+      if (!lockedUpload || lockedUpload.userId !== userId) {
+        return { kind: "missing" as const };
+      }
+      if (lockedUpload.publishedAt) {
+        const [existing] = await tx
+          .select({ id: videos.id })
+          .from(videos)
+          .where(eq(videos.objectPath, lockedUpload.objectPath))
+          .limit(1);
+        return existing
+          ? { kind: "existing" as const, videoId: existing.id }
+          : { kind: "missing" as const };
+      }
+      if (lockedUpload.expiresAt <= new Date()) {
+        return { kind: "expired" as const };
+      }
+
+      const [inserted] = await tx
+        .insert(videos)
+        .values({
+          id: videoId,
+          creatorId: userId,
+          objectPath: lockedUpload.objectPath,
+          caption: input.caption.trim(),
+          audioTitle: input.audioTitle?.trim() ?? "",
+          durationSec: input.durationSec,
+          sizeBytes: actualSize,
+          contentType: actualType,
+          visibility: input.visibility,
+        })
+        .onConflictDoNothing({ target: videos.objectPath })
+        .returning({ id: videos.id });
+      if (!inserted) {
+        const [existing] = await tx
+          .select({ id: videos.id })
+          .from(videos)
+          .where(eq(videos.objectPath, lockedUpload.objectPath))
+          .limit(1);
+        if (!existing) {
+          throw new Error("Video insert conflicted without an existing video record.");
+        }
+        const publishedAt = new Date();
+        await tx
+          .update(uploads)
+          .set({ publishedAt })
+          .where(eq(uploads.id, lockedUpload.id));
+        return { kind: "existing" as const, videoId: existing.id };
+      }
       await tx
         .update(uploads)
         .set({ publishedAt: createdAt })
-        .where(eq(uploads.id, upload.id));
+        .where(eq(uploads.id, lockedUpload.id));
+      return { kind: "created" as const, videoId: inserted.id };
     });
+    if (publishResult.kind === "missing") {
+      res.status(409).json({ error: "This upload has already been published or is no longer available." });
+      return;
+    }
+    if (publishResult.kind === "expired") {
+      res.status(400).json({ error: "This upload has expired. Choose the video again to retry." });
+      return;
+    }
+    if (publishResult.kind === "existing") {
+      const existing = await videoPage({
+        viewerId: userId,
+        videoId: publishResult.videoId,
+        limit: 1,
+        cursor: undefined,
+      });
+      const published = existing.items[0];
+      if (!published) {
+        res.status(409).json({ error: "This upload was already published, but its video is no longer available." });
+        return;
+      }
+      res.setHeader("Cache-Control", "private, no-store");
+      res.status(200).json(published);
+      return;
+    }
 
+    res.setHeader("Cache-Control", "private, no-store");
     res.status(201).json({
-      id: videoId,
+      id: publishResult.videoId,
       creator: {
         id: user.id,
         username: user.username,
         displayName: user.displayName,
         avatarUrl: user.avatarUrl,
+        isFollowing: false,
       },
       caption: input.caption.trim(),
       audioTitle: input.audioTitle?.trim() ?? "",

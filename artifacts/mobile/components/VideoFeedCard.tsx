@@ -16,6 +16,7 @@ import * as Clipboard from "expo-clipboard";
 import { useUser } from "@clerk/expo";
 import {
   getGetFeedQueryKey,
+  getGetFavoritesQueryKey,
   getGetProfileQueryKey,
   useFavoriteVideo,
   useFollowProfile,
@@ -86,7 +87,10 @@ export function VideoFeedCard({ video, height, isActive }: Props) {
     setActionError("");
     try {
       await favorite.mutateAsync({ videoId: video.id });
-      await queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getGetFavoritesQueryKey() }),
+      ]);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Your favorite could not be saved.");
     }
@@ -247,12 +251,14 @@ export function VideoFeedCard({ video, height, isActive }: Props) {
             label={String(video.commentsCount)}
             onPress={() => router.push(`/comments/${video.id}` as never)}
           />
-          <Action
-            icon="send"
-            label={String(video.sharesCount)}
-            disabled={share.isPending}
-            onPress={() => setShareVisible(true)}
-          />
+          {video.visibility === "public" ? (
+            <Action
+              icon="send"
+              label={String(video.sharesCount)}
+              disabled={share.isPending}
+              onPress={() => setShareVisible(true)}
+            />
+          ) : null}
           <Action
             icon="bookmark"
             label={String(video.favoritesCount)}

@@ -33,6 +33,7 @@ import {
   type Response,
 } from "express";
 import { logger } from "../lib/logger";
+import { safeErrorDetails } from "./routeErrors";
 import { ensureProfile } from "./yall";
 
 const router: IRouter = Router();
@@ -44,7 +45,7 @@ function handle(handler: AsyncHandler): RequestHandler {
   return (req, res, next) => {
     void handler(req, res).catch((error: unknown) => {
       logger.error(
-        { err: error, method: req.method, path: req.path },
+        { error: safeErrorDetails(error), method: req.method, path: req.path },
         "YOU ALL messaging API request failed",
       );
       if (!res.headersSent) res.status(500).json({ error: "The request could not be completed." });
