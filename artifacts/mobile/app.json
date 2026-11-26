@@ -65,14 +65,13 @@
         }
       ]
     ],
-    "experiments": {
+    "experiments": {"extra": {
+  "eas": {
+    "projectId": "2417ccf5-16d4-4dfc-a17d-29338f521b0f"
+  }
+},
       "typedRoutes": true,
       "reactCompiler": true
     }
   }
 }
-"extra": {
-  "eas": {
-    "projectId": "2417ccf5-16d4-4dfc-a17d-29338f521b0f"
-  }
-},
