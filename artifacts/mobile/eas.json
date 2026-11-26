@@ -5,19 +5,20 @@
       "node": "22.13.0",
       "pnpm": "10.26.1",
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "android": { "image": "latest" }
     },
     "preview": {
       "node": "22.13.0",
       "pnpm": "10.26.1",
       "distribution": "internal",
-      "android": { "buildType": "apk" }
+      "android": { "buildType": "apk", "image": "latest" }
     },
     "production": {
       "node": "22.13.0",
       "pnpm": "10.26.1",
       "autoIncrement": true,
-      "android": { "buildType": "app-bundle" }
+      "android": { "buildType": "app-bundle", "image": "latest" }
     }
   },
   "submit": { "production": {} }
