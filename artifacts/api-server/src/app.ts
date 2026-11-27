@@ -40,7 +40,11 @@ app.use(
     secretKey: process.env.CLERK_SECRET_KEY,
   }),
 );
-
+app.use((req, _res, next) => {
+  const h = req.headers.authorization;
+  req.log.info({ hasAuthHeader: Boolean(h), headerLength: h?.length ?? 0 }, "auth debug");
+  next();
+});
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
