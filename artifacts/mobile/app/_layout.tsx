@@ -25,7 +25,7 @@ void SplashScreen.preventAutoHideAsync();
 const queryClient = new QueryClient();
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? '';
 const proxyUrl = process.env.EXPO_PUBLIC_CLERK_PROXY_URL || undefined;
-const apiDomain = process.env.EXPO_PUBLIC_DOMAIN;
+const apiDomain = process.env.EXPO_PUBLIC_DOMAIN || "ultimate-master-build--yitayal647.replit.app";
 if (apiDomain) setBaseUrl(`https://${apiDomain}`);
 
 function RootLayoutNav() {
